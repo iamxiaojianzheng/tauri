@@ -107,13 +107,8 @@ impl Monitor {
 
 macro_rules! unstable_struct {
     (#[doc = $doc:expr] $($tokens:tt)*) => {
-      #[cfg(feature = "unstable")]
-      #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
       #[doc = $doc]
       pub $($tokens)*
-
-      #[cfg(not(feature = "unstable"))]
-      pub(crate) $($tokens)*
     }
 }
 
@@ -141,7 +136,7 @@ impl<R: Runtime, M: Manager<R>> fmt::Debug for WindowBuilder<'_, R, M> {
   }
 }
 
-#[cfg_attr(not(feature = "unstable"), allow(dead_code))]
+
 impl<'a, R: Runtime, M: Manager<R>> WindowBuilder<'a, R, M> {
   /// Initializes a window builder with the given window label.
   ///
@@ -427,7 +422,6 @@ tauri::Builder::default()
 
 /// Desktop APIs.
 #[cfg(desktop)]
-#[cfg_attr(not(feature = "unstable"), allow(dead_code))]
 impl<'a, R: Runtime, M: Manager<R>> WindowBuilder<'a, R, M> {
   /// Sets the menu for the window.
   #[must_use]
@@ -1040,15 +1034,15 @@ impl<R: Runtime> Window<R> {
   /// Initializes a window builder with the given window label.
   ///
   /// Data URLs are only supported with the `webview-data-url` feature flag.
-  #[cfg(feature = "unstable")]
-  #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+  // #[cfg(feature = "unstable")]
+  // #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
   pub fn builder<M: Manager<R>, L: Into<String>>(manager: &M, label: L) -> WindowBuilder<'_, R, M> {
     WindowBuilder::new(manager, label.into())
   }
 
   /// Adds a new webview as a child of this window.
-  #[cfg(any(test, all(desktop, feature = "unstable")))]
-  #[cfg_attr(docsrs, doc(cfg(all(desktop, feature = "unstable"))))]
+  // #[cfg(any(test, all(desktop, feature = "unstable")))]
+  // #[cfg_attr(docsrs, doc(cfg(all(desktop, feature = "unstable"))))]
   pub fn add_child<P: Into<Position>, S: Into<Size>>(
     &self,
     webview_builder: WebviewBuilder<R>,
