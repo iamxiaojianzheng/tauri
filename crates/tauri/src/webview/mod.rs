@@ -256,13 +256,8 @@ pub enum NewWindowResponse<R: Runtime> {
 
 macro_rules! unstable_struct {
     (#[doc = $doc:expr] $($tokens:tt)*) => {
-      #[cfg(any(test, feature = "unstable"))]
-      #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
       #[doc = $doc]
       pub $($tokens)*
-
-      #[cfg(not(any(test, feature = "unstable")))]
-      pub(crate) $($tokens)*
     }
 }
 
@@ -280,7 +275,6 @@ unstable_struct!(
   }
 );
 
-#[cfg_attr(not(feature = "unstable"), allow(dead_code))]
 impl<R: Runtime> WebviewBuilder<R> {
   /// Initializes a webview builder with the given webview label and URL to load.
   ///
@@ -1365,8 +1359,6 @@ impl<R: Runtime> Webview<R> {
   /// Initializes a webview builder with the given window label and URL to load on the webview.
   ///
   /// Data URLs are only supported with the `webview-data-url` feature flag.
-  #[cfg(feature = "unstable")]
-  #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
   pub fn builder<L: Into<String>>(label: L, url: WebviewUrl) -> WebviewBuilder<R> {
     WebviewBuilder::new(label.into(), url)
   }
