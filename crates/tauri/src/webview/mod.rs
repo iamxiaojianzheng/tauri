@@ -1958,6 +1958,9 @@ tauri::Builder::default()
   fn is_local_url(&self, current_url: &Url) -> bool {
     let uses_https = current_url.scheme() == "https";
 
+    // or if host is localhost or 127.0.0.1 (local plugin dev servers)
+    (current_url.host_str() == Some("localhost") || current_url.host_str() == Some("127.0.0.1")) ||
+
     // if from `tauri://` custom protocol
     ({
       let protocol_url = self.manager().tauri_protocol_url(uses_https);
