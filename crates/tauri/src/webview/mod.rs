@@ -260,13 +260,8 @@ pub enum NewWindowResponse<R: Runtime> {
 
 macro_rules! unstable_struct {
     (#[doc = $doc:expr] $($tokens:tt)*) => {
-      #[cfg(any(test, feature = "unstable"))]
-      #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
       #[doc = $doc]
       pub $($tokens)*
-
-      #[cfg(not(any(test, feature = "unstable")))]
-      pub(crate) $($tokens)*
     }
 }
 
@@ -1506,8 +1501,6 @@ impl<R: Runtime> Webview<R> {
   /// Initializes a webview builder with the given window label and URL to load on the webview.
   ///
   /// Data URLs are only supported with the `webview-data-url` feature flag.
-  #[cfg(feature = "unstable")]
-  #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
   pub fn builder<L: Into<String>>(label: L, url: WebviewUrl) -> WebviewBuilder<R> {
     WebviewBuilder::new(label.into(), url)
   }
@@ -1960,6 +1953,9 @@ tauri::Builder::default()
 
   fn is_local_url(&self, current_url: &Url) -> bool {
     let uses_https = current_url.scheme() == "https";
+
+    // or if host is localhost or 127.0.0.1 (local plugin dev servers)
+    (current_url.host_str() == Some("localhost") || current_url.host_str() == Some("127.0.0.1")) ||
 
     // if from `tauri://` custom protocol
     ({

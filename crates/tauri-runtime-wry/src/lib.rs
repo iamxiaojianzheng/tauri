@@ -146,6 +146,8 @@ type IpcHandler = dyn Fn(Request<String>) + 'static;
 #[cfg(not(debug_assertions))]
 mod dialog;
 mod monitor;
+#[cfg(windows)]
+mod shadow;
 #[cfg(any(
   windows,
   target_os = "linux",
@@ -2451,6 +2453,8 @@ pub struct WindowWrapper {
   #[cfg(windows)]
   is_window_transparent: bool,
   #[cfg(windows)]
+  shadow_requested: AtomicBool,
+  #[cfg(windows)]
   surface: Option<softbuffer::Surface<Arc<Window>, Arc<Window>>>,
   #[cfg(windows)]
   focused_webview: Arc<Mutex<FocusState>>,
@@ -3362,10 +3366,7 @@ fn handle_user_message<T: UserEvent>(
             if !resizable {
               undecorated_resizing::detach_resize_handler(window.hwnd());
             } else if !window.is_decorated() {
-              undecorated_resizing::attach_resize_handler(
-                window.hwnd(),
-                window.has_undecorated_shadow(),
-              );
+              undecorated_resizing::attach_resize_handler(window.hwnd(), false);
             }
           }
           WindowMessage::SetMaximizable(maximizable) => window.set_maximizable(maximizable),
@@ -3388,23 +3389,72 @@ fn handle_user_message<T: UserEvent>(
           WindowMessage::SetDecorations(decorations) => {
             window.set_decorations(decorations);
             #[cfg(windows)]
-            if decorations {
-              undecorated_resizing::detach_resize_handler(window.hwnd());
-            } else if window.is_resizable() {
-              undecorated_resizing::attach_resize_handler(
-                window.hwnd(),
-                window.has_undecorated_shadow(),
-              );
+            {
+              window.set_undecorated_shadow(false);
+              if decorations {
+                crate::shadow::reset(window.hwnd());
+                undecorated_resizing::detach_resize_handler(window.hwnd());
+              } else {
+                let (requested, is_window_transparent) = {
+                  let windows_ref = windows.0.borrow();
+                  windows_ref
+                    .get(&id)
+                    .map(|w| {
+                      (
+                        w.shadow_requested.load(Ordering::Relaxed),
+                        w.is_window_transparent,
+                      )
+                    })
+                    .unwrap_or((false, false))
+                };
+                let enable_shadow = requested && !is_window_transparent;
+                crate::shadow::update(window.hwnd(), enable_shadow);
+                if window.is_resizable() {
+                  undecorated_resizing::attach_resize_handler(window.hwnd(), false);
+                }
+                undecorated_resizing::update_drag_hwnd_rgn_for_undecorated(
+                  window.hwnd(),
+                  false,
+                );
+              }
             }
           }
-          WindowMessage::SetShadow(_enable) => {
+          WindowMessage::SetShadow(enable) => {
             #[cfg(windows)]
             {
-              window.set_undecorated_shadow(_enable);
-              undecorated_resizing::update_drag_hwnd_rgn_for_undecorated(window.hwnd(), _enable);
+              {
+                if let Some(wrapper) = windows.0.borrow_mut().get_mut(&id) {
+                  wrapper
+                    .shadow_requested
+                    .store(enable, Ordering::Relaxed);
+                }
+              }
+              window.set_undecorated_shadow(false);
+              let is_window_transparent = {
+                let windows_ref = windows.0.borrow();
+                windows_ref
+                  .get(&id)
+                  .map(|w| w.is_window_transparent)
+                  .unwrap_or(false)
+              };
+              let decorated = window.is_decorated();
+              let enable_shadow = enable && !decorated && !is_window_transparent;
+              if decorated {
+                crate::shadow::reset(window.hwnd());
+                undecorated_resizing::detach_resize_handler(window.hwnd());
+              } else {
+                crate::shadow::update(window.hwnd(), enable_shadow);
+                if window.is_resizable() {
+                  undecorated_resizing::attach_resize_handler(window.hwnd(), false);
+                }
+                undecorated_resizing::update_drag_hwnd_rgn_for_undecorated(
+                  window.hwnd(),
+                  false,
+                );
+              }
             }
             #[cfg(target_os = "macos")]
-            window.set_has_shadow(_enable);
+            window.set_has_shadow(enable);
           }
           WindowMessage::SetAlwaysOnBottom(always_on_bottom) => {
             window.set_always_on_bottom(always_on_bottom)
@@ -3999,6 +4049,24 @@ fn handle_user_message<T: UserEvent>(
       if let Ok(window) = builder.build(event_loop) {
         window_id_map.insert(window.id(), window_id);
 
+        #[cfg(windows)]
+        let shadow_requested = window.has_undecorated_shadow();
+
+        #[cfg(windows)]
+        if shadow_requested {
+          window.set_undecorated_shadow(false);
+        }
+
+        #[cfg(windows)]
+        {
+          let decorated = window.is_decorated();
+          if decorated || is_window_transparent {
+            crate::shadow::reset(window.hwnd());
+          } else {
+            crate::shadow::update(window.hwnd(), shadow_requested);
+          }
+        }
+
         let window = Arc::new(window);
 
         #[cfg(windows)]
@@ -4029,6 +4097,8 @@ fn handle_user_message<T: UserEvent>(
             background_color,
             #[cfg(windows)]
             is_window_transparent,
+            #[cfg(windows)]
+            shadow_requested: AtomicBool::new(shadow_requested),
             #[cfg(windows)]
             surface,
             #[cfg(windows)]
@@ -4537,6 +4607,9 @@ fn create_window<T: UserEvent, F: Fn(RawWindow) + Send + 'static>(
     .inspect_err(|e| log::error!("Error creating window: {e:?}"))
     .map_err(|_| Error::CreateWindow)?;
 
+  #[cfg(windows)]
+  let shadow_requested = window.has_undecorated_shadow();
+
   // On macOS, `with_position` uses the content origin; the title bar is added
   // above it. `set_outer_position` is needed for precise window placement.
   #[cfg(target_os = "macos")]
@@ -4598,6 +4671,21 @@ fn create_window<T: UserEvent, F: Fn(RawWindow) + Send + 'static>(
   #[cfg(not(feature = "unstable"))]
   let has_children = false;
 
+  #[cfg(windows)]
+  if shadow_requested {
+    window.set_undecorated_shadow(false);
+  }
+
+  #[cfg(windows)]
+  {
+    let decorated = window.is_decorated();
+    if decorated || is_window_transparent {
+      crate::shadow::reset(window.hwnd());
+    } else {
+      crate::shadow::update(window.hwnd(), shadow_requested);
+    }
+  }
+
   if let Some(webview) = webview {
     webviews.push(create_webview(
       #[cfg(feature = "unstable")]
@@ -4642,6 +4730,8 @@ fn create_window<T: UserEvent, F: Fn(RawWindow) + Send + 'static>(
     background_color,
     #[cfg(windows)]
     is_window_transparent,
+    #[cfg(windows)]
+    shadow_requested: AtomicBool::new(shadow_requested),
     #[cfg(windows)]
     surface,
     #[cfg(windows)]
@@ -5214,7 +5304,7 @@ You may have it installed on another user account, but it is not available for t
     undecorated_resizing::attach_resize_handler(&webview);
     #[cfg(windows)]
     if window.is_resizable() && !window.is_decorated() {
-      undecorated_resizing::attach_resize_handler(window.hwnd(), window.has_undecorated_shadow());
+      undecorated_resizing::attach_resize_handler(window.hwnd(), false);
     }
   }
 

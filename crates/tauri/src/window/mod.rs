@@ -105,13 +105,8 @@ impl Monitor {
 
 macro_rules! unstable_struct {
     (#[doc = $doc:expr] $($tokens:tt)*) => {
-      #[cfg(feature = "unstable")]
-      #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
       #[doc = $doc]
       pub $($tokens)*
-
-      #[cfg(not(feature = "unstable"))]
-      pub(crate) $($tokens)*
     }
 }
 
@@ -1152,8 +1147,6 @@ impl<R: Runtime> Window<R> {
   /// ```
   ///
   /// [the Webview2 issue]: https://github.com/tauri-apps/wry/issues/583
-  #[cfg(feature = "unstable")]
-  #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
   pub fn builder<M: Manager<R>, L: Into<String>>(manager: &M, label: L) -> WindowBuilder<'_, R, M> {
     WindowBuilder::new(manager, label.into())
   }
@@ -1221,8 +1214,6 @@ impl<R: Runtime> Window<R> {
   /// ```
   ///
   /// [the Webview2 issue]: https://github.com/tauri-apps/wry/issues/583
-  #[cfg(any(test, all(desktop, feature = "unstable")))]
-  #[cfg_attr(docsrs, doc(cfg(all(desktop, feature = "unstable"))))]
   pub fn add_child<P: Into<Position>, S: Into<Size>>(
     &self,
     webview_builder: WebviewBuilder<R>,
